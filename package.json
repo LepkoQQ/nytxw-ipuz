@@ -1,0 +1,22 @@
+{
+  "name": "nytxw-ipuz",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Unlicense",
+  "scripts": {
+    "dev": "parcel src/index.html --open --port 3000"
+  },
+  "devDependencies": {
+    "@eslint/config-helpers": "^0.3.1",
+    "@eslint/js": "^9.34.0",
+    "@parcel/transformer-sass": "2.15.4",
+    "eslint": "^9.34.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^16.3.0",
+    "parcel": "^2.15.4",
+    "prettier": "^3.6.2"
+  }
+}
