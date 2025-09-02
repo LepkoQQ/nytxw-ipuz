@@ -50,6 +50,7 @@ function getLineWrappedCellIndex(cellIndex, direction) {
 function getGridWrappedCellIndex(cellIndex, direction) {
   const width = Number(gridEl.dataset.width);
   const count = gridEl.querySelectorAll(".grid-cell").length;
+  const col = cellIndex % width;
   let index = cellIndex;
 
   if (direction === "right") {
@@ -58,8 +59,14 @@ function getGridWrappedCellIndex(cellIndex, direction) {
     index = (index - 1 + count) % count;
   } else if (direction === "up") {
     index = (index - width + count) % count;
+    if (index > cellIndex) {
+      index = (width - 1) * width + ((col - 1 + width) % width);
+    }
   } else if (direction === "down") {
     index = (index + width) % count;
+    if (index < cellIndex) {
+      index = (col + 1) % width;
+    }
   }
 
   return index;
@@ -104,11 +111,21 @@ puzzleContainerEl.addEventListener("keydown", (event) => {
     return;
   }
 
+  // space swaps directions (needs to be before event.key.length because event.key is " ")
+  if (event.code === "Space") {
+    event.preventDefault();
+    gridEl.dataset.direction =
+      gridEl.dataset.direction === "across" ? "down" : "across";
+    highlightCells(event.target);
+    return;
+  }
+
   // single character key sets input value and focuses the next input
   if (event.key.length === 1) {
     event.preventDefault();
     event.target.value = event.key.toUpperCase();
-    const nextInput = getAdjacentInput(event.target, "right");
+    const dir = gridEl.dataset.direction === "across" ? "right" : "down";
+    const nextInput = getAdjacentInput(event.target, dir);
     nextInput?.focus();
     return;
   }
@@ -117,7 +134,8 @@ puzzleContainerEl.addEventListener("keydown", (event) => {
   if (event.key === "Backspace") {
     event.preventDefault();
     if (event.target.value === "") {
-      const prevInput = getAdjacentInput(event.target, "left");
+      const dir = gridEl.dataset.direction === "across" ? "left" : "up";
+      const prevInput = getAdjacentInput(event.target, dir);
       prevInput.value = "";
       prevInput?.focus();
     } else {
@@ -160,57 +178,95 @@ puzzleContainerEl.addEventListener("keydown", (event) => {
   }
 });
 
+const _STATE = {
+  lastActiveAnswerInputMouseDown: null,
+};
+
+puzzleContainerEl.addEventListener("mousedown", (event) => {
+  if (
+    event.target.tagName === "INPUT" &&
+    event.target.classList.contains("answer") &&
+    event.target === document.activeElement
+  ) {
+    _STATE.lastActiveAnswerInputMouseDown = event.target;
+  }
+});
+
+puzzleContainerEl.addEventListener("mouseup", (event) => {
+  if (
+    event.target.tagName === "INPUT" &&
+    event.target.classList.contains("answer") &&
+    event.target === document.activeElement &&
+    event.target === _STATE.lastActiveAnswerInputMouseDown
+  ) {
+    gridEl.dataset.direction =
+      gridEl.dataset.direction === "across" ? "down" : "across";
+    highlightCells(event.target);
+  }
+
+  _STATE.lastActiveAnswerInputMouseDown = null;
+});
+
+function highlightCells(input) {
+  puzzleContainerEl.querySelectorAll(".grid-cell.highlight").forEach((cell) => {
+    cell.classList.remove("highlight");
+  });
+  clueListsEl.querySelectorAll("li.highlight").forEach((clue) => {
+    clue.classList.remove("highlight", "other");
+  });
+
+  // TODO: related cells
+
+  const cellEl = input.parentElement;
+  const clues = JSON.parse(cellEl.dataset.clues || "[]");
+  if (clues.length) {
+    let clue = clues[0];
+    if (gridEl.dataset.direction === "down" && clues.length > 1) {
+      clue = clues[1];
+    }
+    const clueEl = clueListsEl.querySelector(`li[data-clue="${clue}"]`);
+    if (clueEl) {
+      clueEl.classList.add("highlight");
+      const cells = JSON.parse(clueEl.dataset.cells || "[]");
+      if (cells.length) {
+        cells.forEach((cellIdx) => {
+          const cell = puzzleContainerEl.querySelector(
+            `.grid-cell[data-cell="${cellIdx}"]`,
+          );
+          if (cell) {
+            cell.classList.add("highlight");
+          }
+        });
+      }
+    }
+    const otherClues = clues.filter((c) => c !== clue);
+    otherClues.forEach((otherClue) => {
+      const otherClueEl = clueListsEl.querySelector(
+        `li[data-clue="${otherClue}"]`,
+      );
+      if (otherClueEl) {
+        otherClueEl.classList.add("highlight", "other");
+      }
+    });
+  }
+}
+
 puzzleContainerEl.addEventListener("focusin", (event) => {
   if (
     event.target.tagName === "INPUT" &&
     event.target.classList.contains("answer")
   ) {
-    puzzleContainerEl
-      .querySelectorAll(".grid-cell.highlight")
-      .forEach((cell) => {
-        cell.classList.remove("highlight");
-      });
-    clueListsEl.querySelectorAll("li.highlight").forEach((clue) => {
-      clue.classList.remove("highlight", "other");
-    });
-
-    // TODO: related cells
-
-    const cellEl = event.target.parentElement;
-    const clues = JSON.parse(cellEl.dataset.clues || "[]");
-    if (clues.length) {
-      const clue = clues[0];
-      const clueEl = clueListsEl.querySelector(`li[data-clue="${clue}"]`);
-      if (clueEl) {
-        clueEl.classList.add("highlight");
-        const cells = JSON.parse(clueEl.dataset.cells || "[]");
-        if (cells.length) {
-          cells.forEach((cellIdx) => {
-            const cell = puzzleContainerEl.querySelector(
-              `.grid-cell[data-cell="${cellIdx}"]`,
-            );
-            if (cell) {
-              cell.classList.add("highlight");
-            }
-          });
-        }
-      }
-      const otherClues = clues.filter((c) => c !== clue);
-      otherClues.forEach((otherClue) => {
-        const otherClueEl = clueListsEl.querySelector(
-          `li[data-clue="${otherClue}"]`,
-        );
-        if (otherClueEl) {
-          otherClueEl.classList.add("highlight", "other");
-        }
-      });
-    }
+    highlightCells(event.target);
   }
 });
 
 clueListsEl.addEventListener("click", (event) => {
   const clueEl = event.target.closest("li[data-clue]");
   if (clueEl) {
+    const listEl = clueEl.closest(".clue-list");
+    const listIdx = listEl.dataset.list;
+    gridEl.dataset.direction = listIdx == 0 ? "across" : "down";
+
     const cells = JSON.parse(clueEl.dataset.cells || "[]");
     if (cells.length) {
       const cellIdx = cells[0];
@@ -240,7 +296,7 @@ function loadMetadata(json) {
   const constructorsEl = metaEl.querySelector(".constructors");
   const editorEl = metaEl.querySelector(".editor");
 
-  titleEl.textContent = json.title || "Untitled";
+  titleEl.textContent = json.title || "The Crossword";
   dateEl.textContent = formatDate(json.publicationDate);
   constructorsEl.textContent = `Constructed by: ${joinList(json.constructors)}`;
   editorEl.textContent = `Edited by: ${json.editor}`;
@@ -249,9 +305,10 @@ function loadMetadata(json) {
 function buildClueLists(clueLists, clues) {
   clueListsEl.innerHTML = "";
 
-  clueLists.forEach((clueList) => {
+  clueLists.forEach((clueList, i) => {
     const listWrapperEl = document.createElement("div");
     listWrapperEl.classList.add("clue-list");
+    listWrapperEl.dataset.list = i;
 
     const listNameEl = document.createElement("h3");
     listNameEl.classList.add("name");
@@ -289,6 +346,7 @@ function buildGrid(dimensions, cells) {
   const { width, height } = dimensions;
 
   gridEl.innerHTML = "";
+  gridEl.dataset.direction = "across";
   gridEl.dataset.width = width;
   gridEl.dataset.height = height;
   gridEl.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
