@@ -25,6 +25,140 @@ dropZoneEl.addEventListener("drop", (event) => {
   }
 });
 
+function getLineWrappedCellIndex(cellIndex, direction) {
+  const gridEl = document.querySelector(".puzzle-grid");
+  const width = Number(gridEl.dataset.width);
+  const height = Number(gridEl.dataset.height);
+  let col = cellIndex % width;
+  let row = Math.floor(cellIndex / width);
+
+  if (direction === "right") {
+    col = (col + 1) % width;
+  } else if (direction === "left") {
+    col = (col - 1 + width) % width;
+  } else if (direction === "up") {
+    row = (row - 1 + height) % height;
+  } else if (direction === "down") {
+    row = (row + 1) % height;
+  }
+
+  return row * width + col;
+}
+
+function getGridWrappedCellIndex(cellIndex, direction) {
+  const gridEl = document.querySelector(".puzzle-grid");
+  const width = Number(gridEl.dataset.width);
+  const count = gridEl.querySelectorAll(".grid-cell").length;
+  let index = cellIndex;
+
+  if (direction === "right") {
+    index = (index + 1) % count;
+  } else if (direction === "left") {
+    index = (index - 1 + count) % count;
+  } else if (direction === "up") {
+    index = (index - width + count) % count;
+  } else if (direction === "down") {
+    index = (index + width) % count;
+  }
+
+  return index;
+}
+
+function getWrappedCellIndex(cellIndex, direction, wrapType) {
+  if (wrapType === "grid") {
+    return getGridWrappedCellIndex(cellIndex, direction);
+  } else if (wrapType === "line") {
+    return getLineWrappedCellIndex(cellIndex, direction);
+  }
+}
+
+function getAdjacentInput(input, direction, wrapType = "grid") {
+  const cell = input.parentElement;
+  const cellIndex = Number(cell.dataset.cell);
+  let adjacentCell = cell;
+  let adjacentIndex = cellIndex;
+
+  do {
+    adjacentIndex = getWrappedCellIndex(adjacentIndex, direction, wrapType);
+    adjacentCell = cell.parentElement.querySelector(
+      `.grid-cell[data-cell="${adjacentIndex}"]`,
+    );
+    if (!adjacentCell) {
+      return input;
+    }
+  } while (!adjacentCell.querySelector(".answer"));
+
+  return adjacentCell.querySelector(".answer");
+}
+
+puzzleContainerEl.addEventListener("keydown", (event) => {
+  if (
+    event.target.tagName !== "INPUT" ||
+    !event.target.classList.contains("answer")
+  ) {
+    return;
+  }
+
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    return;
+  }
+
+  // single character key sets input value and focuses the next input
+  if (event.key.length === 1) {
+    event.preventDefault();
+    event.target.value = event.key.toUpperCase();
+    const nextInput = getAdjacentInput(event.target, "right");
+    nextInput?.focus();
+    return;
+  }
+
+  // backspace deletes and focuses the previous input if current is empty
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    if (event.target.value === "") {
+      const prevInput = getAdjacentInput(event.target, "left");
+      prevInput.value = "";
+      prevInput?.focus();
+    } else {
+      event.target.value = "";
+    }
+    return;
+  }
+
+  // delete clears the input
+  if (event.key === "Delete") {
+    event.preventDefault();
+    event.target.value = "";
+    return;
+  }
+
+  // left/right/up/down arrows move to previous/next inputs in the same line (wrapping around)
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    const prevInput = getAdjacentInput(event.target, "left", "line");
+    prevInput?.focus();
+    return;
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    const nextInput = getAdjacentInput(event.target, "right", "line");
+    nextInput?.focus();
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    const prevInput = getAdjacentInput(event.target, "up", "line");
+    prevInput?.focus();
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    const nextInput = getAdjacentInput(event.target, "down", "line");
+    nextInput?.focus();
+    return;
+  }
+});
+
 function formatDate(isoDate) {
   const options = { year: "numeric", month: "long", day: "numeric" };
   return new Date(isoDate).toLocaleDateString("en-US", options);
@@ -103,6 +237,7 @@ function buildGrid(dimensions, cells) {
       const cell = cells[row * width + col];
       const cellEl = document.createElement("div");
       cellEl.classList.add("grid-cell");
+      cellEl.dataset.cell = row * width + col;
       if (cell.clues?.length) {
         cellEl.dataset.clues = JSON.stringify(cell.clues);
       }
@@ -131,4 +266,5 @@ function loadNYTXW(json) {
   buildClueLists(json.body[0].clueLists, json.body[0].clues);
   buildGrid(json.body[0].dimensions, json.body[0].cells);
   puzzleContainerEl.classList.remove("hidden");
+  puzzleContainerEl.querySelector(".grid-cell .answer").focus();
 }
