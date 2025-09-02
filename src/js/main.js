@@ -1,5 +1,8 @@
 const dropZoneEl = document.querySelector(".drop-zone");
 const puzzleContainerEl = document.querySelector(".puzzle-container");
+const metaEl = document.querySelector(".puzzle-meta");
+const gridEl = document.querySelector(".puzzle-grid");
+const clueListsEl = document.querySelector(".puzzle-clue-lists");
 
 dropZoneEl.addEventListener("dragover", (event) => {
   event.preventDefault();
@@ -26,7 +29,6 @@ dropZoneEl.addEventListener("drop", (event) => {
 });
 
 function getLineWrappedCellIndex(cellIndex, direction) {
-  const gridEl = document.querySelector(".puzzle-grid");
   const width = Number(gridEl.dataset.width);
   const height = Number(gridEl.dataset.height);
   let col = cellIndex % width;
@@ -46,7 +48,6 @@ function getLineWrappedCellIndex(cellIndex, direction) {
 }
 
 function getGridWrappedCellIndex(cellIndex, direction) {
-  const gridEl = document.querySelector(".puzzle-grid");
   const width = Number(gridEl.dataset.width);
   const count = gridEl.querySelectorAll(".grid-cell").length;
   let index = cellIndex;
@@ -159,6 +160,70 @@ puzzleContainerEl.addEventListener("keydown", (event) => {
   }
 });
 
+puzzleContainerEl.addEventListener("focusin", (event) => {
+  if (
+    event.target.tagName === "INPUT" &&
+    event.target.classList.contains("answer")
+  ) {
+    puzzleContainerEl
+      .querySelectorAll(".grid-cell.highlight")
+      .forEach((cell) => {
+        cell.classList.remove("highlight");
+      });
+    clueListsEl.querySelectorAll("li.highlight").forEach((clue) => {
+      clue.classList.remove("highlight", "other");
+    });
+
+    // TODO: related cells
+
+    const cellEl = event.target.parentElement;
+    const clues = JSON.parse(cellEl.dataset.clues || "[]");
+    if (clues.length) {
+      const clue = clues[0];
+      const clueEl = clueListsEl.querySelector(`li[data-clue="${clue}"]`);
+      if (clueEl) {
+        clueEl.classList.add("highlight");
+        const cells = JSON.parse(clueEl.dataset.cells || "[]");
+        if (cells.length) {
+          cells.forEach((cellIdx) => {
+            const cell = puzzleContainerEl.querySelector(
+              `.grid-cell[data-cell="${cellIdx}"]`,
+            );
+            if (cell) {
+              cell.classList.add("highlight");
+            }
+          });
+        }
+      }
+      const otherClues = clues.filter((c) => c !== clue);
+      otherClues.forEach((otherClue) => {
+        const otherClueEl = clueListsEl.querySelector(
+          `li[data-clue="${otherClue}"]`,
+        );
+        if (otherClueEl) {
+          otherClueEl.classList.add("highlight", "other");
+        }
+      });
+    }
+  }
+});
+
+clueListsEl.addEventListener("click", (event) => {
+  const clueEl = event.target.closest("li[data-clue]");
+  if (clueEl) {
+    const cells = JSON.parse(clueEl.dataset.cells || "[]");
+    if (cells.length) {
+      const cellIdx = cells[0];
+      const cell = puzzleContainerEl.querySelector(
+        `.grid-cell[data-cell="${cellIdx}"]`,
+      );
+      if (cell?.querySelector(".answer")) {
+        cell.querySelector(".answer").focus();
+      }
+    }
+  }
+});
+
 function formatDate(isoDate) {
   const options = { year: "numeric", month: "long", day: "numeric" };
   return new Date(isoDate).toLocaleDateString("en-US", options);
@@ -170,7 +235,6 @@ function joinList(list) {
 }
 
 function loadMetadata(json) {
-  const metaEl = document.querySelector(".puzzle-meta");
   const titleEl = metaEl.querySelector(".title");
   const dateEl = metaEl.querySelector(".date");
   const constructorsEl = metaEl.querySelector(".constructors");
@@ -183,7 +247,6 @@ function loadMetadata(json) {
 }
 
 function buildClueLists(clueLists, clues) {
-  const clueListsEl = document.querySelector(".puzzle-clue-lists");
   clueListsEl.innerHTML = "";
 
   clueLists.forEach((clueList) => {
@@ -223,7 +286,6 @@ function buildClueLists(clueLists, clues) {
 }
 
 function buildGrid(dimensions, cells) {
-  const gridEl = document.querySelector(".puzzle-grid");
   const { width, height } = dimensions;
 
   gridEl.innerHTML = "";
