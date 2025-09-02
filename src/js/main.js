@@ -1,4 +1,7 @@
+import Joi from "joi";
+
 const dropZoneEl = document.querySelector(".drop-zone");
+const loadErrorEl = document.querySelector(".load-error");
 const puzzleContainerEl = document.querySelector(".puzzle-container");
 const metaEl = document.querySelector(".puzzle-meta");
 const gridEl = document.querySelector(".puzzle-grid");
@@ -21,7 +24,7 @@ dropZoneEl.addEventListener("drop", (event) => {
   if (files.length > 0) {
     const reader = new FileReader();
     reader.onload = (event) => {
-      loadNYTXW(JSON.parse(event.target.result));
+      loadNYTXW(event.target.result);
     };
     reader.readAsText(files[0]);
     // dropZoneEl.classList.add("hidden");
@@ -220,9 +223,23 @@ function highlightCells(input) {
   const cellEl = input.parentElement;
   const clues = JSON.parse(cellEl.dataset.clues || "[]");
   if (clues.length) {
-    let clue = clues[0];
-    if (gridEl.dataset.direction === "down" && clues.length > 1) {
-      clue = clues[1];
+    let listIndex = gridEl.dataset.direction === "across" ? 0 : 1;
+    let clue = clues.find((c) =>
+      clueListsEl.querySelector(
+        `[data-list="${listIndex}"] li[data-clue="${c}"]`,
+      ),
+    );
+    if (clue == null) {
+      gridEl.dataset.direction = listIndex === 0 ? "down" : "across";
+      listIndex = listIndex === 0 ? 1 : 0;
+      clue = clues.find((c) =>
+        clueListsEl.querySelector(
+          `[data-list="${listIndex}"] li[data-clue="${c}"]`,
+        ),
+      );
+    }
+    if (clue == null) {
+      return;
     }
     const clueEl = clueListsEl.querySelector(`li[data-clue="${clue}"]`);
     if (clueEl) {
@@ -264,8 +281,8 @@ clueListsEl.addEventListener("click", (event) => {
   const clueEl = event.target.closest("li[data-clue]");
   if (clueEl) {
     const listEl = clueEl.closest(".clue-list");
-    const listIdx = listEl.dataset.list;
-    gridEl.dataset.direction = listIdx == 0 ? "across" : "down";
+    const listIdx = Number(listEl.dataset.list);
+    gridEl.dataset.direction = listIdx === 0 ? "across" : "down";
 
     const cells = JSON.parse(clueEl.dataset.cells || "[]");
     if (cells.length) {
@@ -281,12 +298,23 @@ clueListsEl.addEventListener("click", (event) => {
 });
 
 function formatDate(isoDate) {
-  const options = { year: "numeric", month: "long", day: "numeric" };
-  return new Date(isoDate).toLocaleDateString("en-US", options);
+  if (!isoDate) {
+    return "Unknown Date";
+  }
+  const options = {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  };
+  return Intl.DateTimeFormat("en-US", options).format(new Date(isoDate));
 }
 
 function joinList(list) {
-  const options = { style: "long", type: "conjunction" };
+  const options = {
+    style: "long",
+    type: "conjunction",
+  };
   return new Intl.ListFormat("en-US", options).format(list);
 }
 
@@ -296,10 +324,14 @@ function loadMetadata(json) {
   const constructorsEl = metaEl.querySelector(".constructors");
   const editorEl = metaEl.querySelector(".editor");
 
-  titleEl.textContent = json.title || "The Crossword";
+  const { width, height } = json.body[0]?.dimensions || {};
+  const fallbackTitle =
+    width < 12 || height < 12 ? "The Mini" : "The Crossword";
+
+  titleEl.textContent = json.title || fallbackTitle;
   dateEl.textContent = formatDate(json.publicationDate);
-  constructorsEl.textContent = `Constructed by: ${joinList(json.constructors)}`;
-  editorEl.textContent = `Edited by: ${json.editor}`;
+  constructorsEl.textContent = `Constructed by: ${joinList(json.constructors) || "N/A"}`;
+  editorEl.textContent = `Edited by: ${json.editor || "N/A"}`;
 }
 
 function buildClueLists(clueLists, clues) {
@@ -318,6 +350,9 @@ function buildClueLists(clueLists, clues) {
     const ulEl = document.createElement("ul");
     clueList.clues.forEach((clueIdx) => {
       const clue = clues[clueIdx];
+      if (!clue) {
+        throw new Error(`Invalid NYTXW JSON: Invalid clue index: ${clueIdx}`);
+      }
       const liEl = document.createElement("li");
       liEl.dataset.clue = clueIdx;
       if (clue.cells?.length) {
@@ -355,6 +390,11 @@ function buildGrid(dimensions, cells) {
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
       const cell = cells[row * width + col];
+      if (!cell) {
+        throw new Error(
+          `Invalid NYTXW JSON: Invalid cell index: ${row * width + col}`,
+        );
+      }
       const cellEl = document.createElement("div");
       cellEl.classList.add("grid-cell");
       cellEl.dataset.cell = row * width + col;
@@ -381,10 +421,101 @@ function buildGrid(dimensions, cells) {
   }
 }
 
-function loadNYTXW(json) {
-  loadMetadata(json);
-  buildClueLists(json.body[0].clueLists, json.body[0].clues);
-  buildGrid(json.body[0].dimensions, json.body[0].cells);
-  puzzleContainerEl.classList.remove("hidden");
-  puzzleContainerEl.querySelector(".grid-cell .answer").focus();
+function validateNYTXW(jsonString) {
+  let json;
+  try {
+    json = JSON.parse(jsonString);
+  } catch (error) {
+    throw new Error("Invalid NYTXW JSON: " + error.message);
+  }
+
+  const schema = Joi.object({
+    body: Joi.array()
+      .length(1)
+      .items(
+        Joi.object({
+          dimensions: Joi.object({
+            width: Joi.number().min(1).required(),
+            height: Joi.number().min(1).required(),
+          }).required(),
+          clueLists: Joi.array()
+            .length(2)
+            .items(
+              Joi.object({
+                name: Joi.string().required(),
+                clues: Joi.array().items(Joi.number()).min(1).required(),
+              }),
+            )
+            .required(),
+          clues: Joi.array()
+            .items(
+              Joi.object({
+                label: Joi.string().required(),
+                text: Joi.array()
+                  .items(
+                    Joi.object({
+                      plain: Joi.string().required(),
+                      formatted: Joi.string().optional(),
+                    }),
+                  )
+                  .required(),
+                cells: Joi.array().items(Joi.number()).min(1).required(),
+                relatives: Joi.array().items(Joi.number()).optional(),
+                direction: Joi.string().optional(),
+                list: Joi.number().optional(),
+              }),
+            )
+            .required(),
+          cells: Joi.array()
+            .items(
+              Joi.object({
+                label: Joi.string().optional(),
+                answer: Joi.string().optional(),
+                clues: Joi.array().items(Joi.number()).min(1).optional(),
+                type: Joi.number().optional(),
+              })
+                .and("answer", "clues")
+                .with("label", ["answer", "clues"]),
+            )
+            .required(),
+          board: Joi.any().optional(),
+          SVG: Joi.any().optional(),
+        }),
+      )
+      .required(),
+    constructors: Joi.array().items(Joi.string()).min(1).optional(),
+    editor: Joi.string().optional(),
+    copyright: Joi.string().optional(),
+    id: Joi.number().optional(),
+    subcategory: Joi.number().optional(),
+    lastUpdated: Joi.date().optional(),
+    publicationDate: Joi.date().optional(),
+    relatedContent: Joi.any().optional(),
+    freePuzzle: Joi.boolean().optional(),
+  });
+
+  const { error } = schema.validate(json);
+  if (error) {
+    throw new Error("Invalid NYTXW JSON: " + error.message);
+  }
+
+  return json;
+}
+
+function loadNYTXW(jsonString) {
+  try {
+    const json = validateNYTXW(jsonString);
+    loadMetadata(json);
+    buildClueLists(json.body[0].clueLists, json.body[0].clues);
+    buildGrid(json.body[0].dimensions, json.body[0].cells);
+    puzzleContainerEl.classList.remove("hidden");
+    puzzleContainerEl.querySelector(".grid-cell .answer").focus();
+    loadErrorEl.classList.add("hidden");
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(error);
+    loadErrorEl.textContent = error.message;
+    loadErrorEl.classList.remove("hidden");
+    puzzleContainerEl.classList.add("hidden");
+  }
 }

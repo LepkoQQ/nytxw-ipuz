@@ -51,6 +51,7 @@ body {
   gap: 1rem;
   align-items: start;
   grid-template-columns: 3fr 2fr;
+  grid-template-rows: auto 1fr;
   height: calc(100vh - 2rem);
   margin-bottom: 1rem;
   padding: 1rem;
