@@ -367,7 +367,11 @@ function buildClueLists(clueLists, clues) {
       liEl.appendChild(labelEl);
       const textEl = document.createElement("span");
       textEl.classList.add("text");
-      textEl.textContent = clue.text[0].plain;
+      if (clue.text[0].formatted) {
+        textEl.innerHTML = clue.text[0].formatted;
+      } else {
+        textEl.textContent = clue.text[0].plain;
+      }
       liEl.appendChild(textEl);
       ulEl.appendChild(liEl);
     });
@@ -416,6 +420,9 @@ function buildGrid(dimensions, cells) {
         // answerElement.value = cell.answer;
         cellEl.appendChild(answerEl);
       }
+      if (cell.type === 2) {
+        cellEl.classList.add("circled");
+      }
       gridEl.appendChild(cellEl);
     }
   }
@@ -430,6 +437,13 @@ function validateNYTXW(jsonString) {
   }
 
   const schema = Joi.object({
+    assets: Joi.array()
+      .items(
+        Joi.object({
+          uri: Joi.string().uri().required(),
+        }),
+      )
+      .optional(),
     body: Joi.array()
       .length(1)
       .items(
@@ -458,6 +472,7 @@ function validateNYTXW(jsonString) {
                       formatted: Joi.string().optional(),
                     }),
                   )
+                  .length(1)
                   .required(),
                 cells: Joi.array().items(Joi.number()).min(1).required(),
                 relatives: Joi.array().items(Joi.number()).optional(),
@@ -472,17 +487,21 @@ function validateNYTXW(jsonString) {
                 label: Joi.string().optional(),
                 answer: Joi.string().optional(),
                 clues: Joi.array().items(Joi.number()).min(1).optional(),
-                type: Joi.number().optional(),
+                type: Joi.number().valid(1, 2).optional(),
               })
                 .and("answer", "clues")
                 .with("label", ["answer", "clues"]),
             )
             .required(),
+          overlays: Joi.object({
+            beforeStart: Joi.number().valid(1).required(),
+          }).optional(),
           board: Joi.any().optional(),
           SVG: Joi.any().optional(),
         }),
       )
       .required(),
+    title: Joi.string().optional(),
     constructors: Joi.array().items(Joi.string()).min(1).optional(),
     editor: Joi.string().optional(),
     copyright: Joi.string().optional(),
